@@ -1,0 +1,28 @@
+// app/_hooks.js
+"use client";
+import { useEffect, useState } from "react";
+
+// Tiny utility: join class names
+export function classNames(...xs) {
+  return xs.filter(Boolean).join(" ");
+}
+
+// LocalStorage state hook (safe if storage is unavailable)
+export function useLocalStorage(key, initialValue) {
+  const [value, setValue] = useState(() => {
+    try {
+      const raw = localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : initialValue;
+    } catch {
+      return initialValue;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(key, JSON.stringify(value));
+    } catch {}
+  }, [key, value]);
+
+  return [value, setValue];
+}
