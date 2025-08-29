@@ -1,3 +1,4 @@
+// utils/getLogo.js
 export function getLogo(p = {}) {
   if (p.logo) return p.logo;
   try {
