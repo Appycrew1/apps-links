@@ -4,7 +4,8 @@ import { supabase } from "../../lib/supabaseClient";
 import { categoriesSeed, providersSeed } from "../../utils/seeds";
 import { Button, OutlineButton, Badge, TextInput } from "../../components/UI";
 import ProviderCard from "../../components/ProviderCard";
-import { classNames } from "../_hooks";
+import { classNames, useLocalStorage } from "../_hooks";
+import { getLogo } from "../../utils/getLogo";
 
 const initialState = { q:"", category:"all", tags:new Set(), onlyDiscounts:false, sort:"relevance" };
 function reducer(state, action){
@@ -32,22 +33,26 @@ function useProvidersAndCategories(){
       try {
         const [{ data: cats, error: ce }, { data: provs, error: pe }] = await Promise.all([
           supabase.from("categories").select("id,label").order("label"),
-          supabase.from("providers").select("*").eq("is_active", true).order("is_featured", { ascending:false }).order("name")
+          supabase.from("providers").select("*").eq("is_active", true).order("is_featured",{ascending:false}).order("name")
         ]);
         if (ce) throw ce; if (pe) throw pe;
         if (!mounted) return;
         const catList = cats?.length ? cats : categoriesSeed;
         setCategories(catList);
         const catMap = new Map(catList.map(c=>[c.id,c.label]));
-        const source = provs?.length ? provs : providersSeed;
-        setProviders(source.map(p=>({
-          id: p.id, name: p.name,
+        const src = provs?.length ? provs : providersSeed;
+        setProviders(src.map(p => ({
+          id: p.id || p.name,
+          name: p.name,
           category: p.category_id || p.category,
           categoryLabel: catMap.get(p.category_id || p.category),
-          tags: p.tags || [], website: p.website,
-          summary: p.summary, details: p.details,
-          discount: p.discount_label ? { label:p.discount_label, details:p.discount_details } : p.discount || null,
-          logo: p.logo, is_featured: !!p.is_featured || (p.feature_until ? new Date(p.feature_until) > new Date() : false),
+          tags: p.tags || [],
+          website: p.website || "",
+          summary: p.summary || "",
+          details: p.details || "",
+          discount: p.discount_label ? { label: p.discount_label, details: p.discount_details } : p.discount || null,
+          logo: p.logo || "",
+          is_featured: !!p.is_featured || (p.feature_until ? new Date(p.feature_until) > new Date() : false),
           tier: p.tier || "free"
         })));
       } catch(e){ setError(e.message); }
@@ -62,8 +67,11 @@ function useProvidersAndCategories(){
 export default function ProvidersPage(){
   const { loading, categories, providers, error } = useProvidersAndCategories();
   const [state, dispatch] = useReducer(reducer, initialState);
-  const [favorites, setFavorites] = useState([]);
-  const [compare, setCompare] = useState([]);
+
+  // Persist across pages
+  const [favorites, setFavorites] = useLocalStorage("favorites_providers", []);
+  const [compare, setCompare]     = useLocalStorage("compare_providers", []);
+
   const [modal, setModal] = useState(null);
 
   const allTags = useMemo(()=>{ const s=new Set(); providers.forEach(p=>p.tags?.forEach(t=>s.add(t))); return Array.from(s).sort(); },[providers]);
@@ -75,7 +83,12 @@ export default function ProvidersPage(){
     if (state.tags.size) r = r.filter(p => p.tags?.some(t => state.tags.has(t)));
     if (state.q.trim()) {
       const q = state.q.toLowerCase();
-      r = r.filter(p => p.name.toLowerCase().includes(q) || p.summary?.toLowerCase().includes(q) || p.details?.toLowerCase().includes(q) || p.tags?.some(t=>t.toLowerCase().includes(q)));
+      r = r.filter(p =>
+        p.name.toLowerCase().includes(q) ||
+        p.summary?.toLowerCase().includes(q) ||
+        p.details?.toLowerCase().includes(q) ||
+        p.tags?.some(t=>t.toLowerCase().includes(q))
+      );
     }
     if (state.sort === "name-asc") r.sort((a,b)=>a.name.localeCompare(b.name));
     if (state.sort === "name-desc") r.sort((a,b)=>b.name.localeCompare(a.name));
@@ -94,7 +107,9 @@ export default function ProvidersPage(){
         </div>
       </div>
 
-      <div className="mb-2 text-sm text-gray-500">{loading ? "Loading live data…" : error ? `Using local data (error: ${error})` : "Live data loaded"}</div>
+      <div className="mb-2 text-sm text-gray-500">
+        {loading ? "Loading live data…" : error ? `Using local data (error: ${error})` : "Live data loaded"}
+      </div>
 
       <div className="mb-6 grid gap-4 md:grid-cols-12">
         <div className="md:col-span-9">
@@ -122,21 +137,37 @@ export default function ProvidersPage(){
           </div>
 
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {results.map(p => (
-              <ProviderCard
-                key={p.id}
-                p={p}
-                onOpen={setModal}
-                onToggleFav={()=>{}}
-                isFav={false}
-                onCompareToggle={()=>{}}
-                comparing={false}
-              />
-            ))}
+            {results.map(p => {
+              const id = p.id || p.name;
+              const isFav = favorites.includes(id);
+              const inCompare = compare.includes(id);
+              const toggleFav = () => {
+                const next = isFav ? favorites.filter(x => x !== id) : [...favorites, id];
+                setFavorites(next);
+              };
+              const toggleCompare = () => {
+                const next = inCompare ? compare.filter(x => x !== id) : (compare.length < 3 ? [...compare, id] : compare);
+                setCompare(next);
+              };
+
+              return (
+                <ProviderCard
+                  key={id}
+                  p={p}
+                  onOpen={setModal}
+                  onToggleFav={toggleFav}
+                  isFav={isFav}
+                  onCompareToggle={toggleCompare}
+                  comparing={inCompare}
+                />
+              );
+            })}
           </div>
 
           {!loading && results.length===0 && (
-            <div className="mt-10 rounded-2xl border border-dashed border-gray-300 p-8 text-center text-gray-600">No results. Try different filters.</div>
+            <div className="mt-10 rounded-2xl border border-dashed border-gray-300 p-8 text-center text-gray-600">
+              No results. Try different filters.
+            </div>
           )}
         </div>
 
@@ -148,7 +179,16 @@ export default function ProvidersPage(){
                 {allTags.map(t => {
                   const active = state.tags.has(t);
                   return (
-                    <button key={t} onClick={()=>dispatch({ type:"TOGGLE_TAG", tag:t })} className={classNames("rounded-full border px-3 py-1 text-xs font-semibold", active?"border-gray-900 bg-gray-900 text-white":"border-gray-300 bg-white text-gray-800 hover:bg-gray-50")}>{t}</button>
+                    <button
+                      key={t}
+                      onClick={()=>dispatch({ type:"TOGGLE_TAG", tag:t })}
+                      className={classNames(
+                        "rounded-full border px-3 py-1 text-xs font-semibold",
+                        active ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-800 hover:bg-gray-50"
+                      )}
+                    >
+                      {t}
+                    </button>
                   );
                 })}
               </div>
@@ -162,7 +202,7 @@ export default function ProvidersPage(){
           <div className="w-full max-w-2xl rounded-3xl bg-white p-6 shadow-2xl">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div className="flex items-center gap-3">
-                <img src={modal.logo || ""} alt="" className="h-10 w-10 rounded-full border border-gray-200 bg-white"/>
+                <img src={getLogo(modal)} alt="" className="h-10 w-10 rounded-full border border-gray-200 bg-white"/>
                 <h3 className="text-xl font-semibold text-gray-900">{modal.name}</h3>
               </div>
               <button onClick={()=>setModal(null)} className="rounded-full p-2 hover:bg-gray-100">✕</button>
@@ -174,7 +214,11 @@ export default function ProvidersPage(){
               {modal.discount && <Badge color="bg-green-100 text-green-800">{modal.discount.label}</Badge>}
             </div>
             <p className="mb-4 text-gray-700">{modal.details || modal.summary}</p>
-            {modal.website && <a href={modal.website} target="_blank" className="inline-flex items-center gap-2 rounded-2xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black">Visit Website ↗</a>}
+            {modal.website && (
+              <a href={modal.website} target="_blank" className="inline-flex items-center gap-2 rounded-2xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-black">
+                Visit Website ↗
+              </a>
+            )}
           </div>
         </div>
       )}
