@@ -1,4 +1,7 @@
 "use client";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 import React, { useEffect, useMemo, useReducer, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { categoriesSeed, providersSeed } from "../../utils/seeds";
