@@ -42,7 +42,7 @@ function useProvidersAndCategories(){
         const catMap = new Map(catList.map(c=>[c.id,c.label]));
         const src = provs?.length ? provs : providersSeed;
         setProviders(src.map(p => ({
-          id: p.id || p.name,
+          id: p.id || p.name, // stable id (uuid or seed)
           name: p.name,
           category: p.category_id || p.category,
           categoryLabel: catMap.get(p.category_id || p.category),
@@ -67,11 +67,8 @@ function useProvidersAndCategories(){
 export default function ProvidersPage(){
   const { loading, categories, providers, error } = useProvidersAndCategories();
   const [state, dispatch] = useReducer(reducer, initialState);
-
-  // Persist across pages
   const [favorites, setFavorites] = useLocalStorage("favorites_providers", []);
   const [compare, setCompare]     = useLocalStorage("compare_providers", []);
-
   const [modal, setModal] = useState(null);
 
   const allTags = useMemo(()=>{ const s=new Set(); providers.forEach(p=>p.tags?.forEach(t=>s.add(t))); return Array.from(s).sort(); },[providers]);
@@ -141,6 +138,7 @@ export default function ProvidersPage(){
               const id = p.id || p.name;
               const isFav = favorites.includes(id);
               const inCompare = compare.includes(id);
+
               const toggleFav = () => {
                 const next = isFav ? favorites.filter(x => x !== id) : [...favorites, id];
                 setFavorites(next);
@@ -176,7 +174,10 @@ export default function ProvidersPage(){
             <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
               <h3 className="mb-3 text-sm font-semibold text-gray-900">Filter by Tags</h3>
               <div className="flex flex-wrap gap-2">
-                {allTags.map(t => {
+                {useMemo(()=>{ // isolate to avoid reflow noise
+                  const s = new Set(); providers.forEach(p=>p.tags?.forEach(t=>s.add(t)));
+                  return Array.from(s).sort();
+                },[providers]).map(t => {
                   const active = state.tags.has(t);
                   return (
                     <button
