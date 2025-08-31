@@ -42,7 +42,7 @@ function useProvidersAndCategories(){
         const catMap = new Map(catList.map(c=>[c.id,c.label]));
         const src = provs?.length ? provs : providersSeed;
         setProviders(src.map(p => ({
-          id: p.id || p.name, // stable id (uuid or seed)
+          id: String(p.id || p.name), // <- stable string id
           name: p.name,
           category: p.category_id || p.category,
           categoryLabel: catMap.get(p.category_id || p.category),
@@ -67,6 +67,7 @@ function useProvidersAndCategories(){
 export default function ProvidersPage(){
   const { loading, categories, providers, error } = useProvidersAndCategories();
   const [state, dispatch] = useReducer(reducer, initialState);
+
   const [favorites, setFavorites] = useLocalStorage("favorites_providers", []);
   const [compare, setCompare]     = useLocalStorage("compare_providers", []);
   const [modal, setModal] = useState(null);
@@ -104,8 +105,12 @@ export default function ProvidersPage(){
         </div>
       </div>
 
-      <div className="mb-2 text-sm text-gray-500">
-        {loading ? "Loading live data…" : error ? `Using local data (error: ${error})` : "Live data loaded"}
+      <div className="mb-2 flex items-center gap-3 text-sm text-gray-500">
+        <span>{loading ? "Loading live data…" : error ? `Using local data (error: ${error})` : "Live data loaded"}</span>
+        {/* tiny debug chip so you can see it working */}
+        <span className="rounded-full border border-gray-300 bg-white px-2 py-0.5 text-xs">
+          Saved: {favorites.length} · Compare: {compare.length}
+        </span>
       </div>
 
       <div className="mb-6 grid gap-4 md:grid-cols-12">
@@ -135,7 +140,7 @@ export default function ProvidersPage(){
 
           <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {results.map(p => {
-              const id = p.id || p.name;
+              const id = String(p.id || p.name);
               const isFav = favorites.includes(id);
               const inCompare = compare.includes(id);
 
@@ -144,7 +149,8 @@ export default function ProvidersPage(){
                 setFavorites(next);
               };
               const toggleCompare = () => {
-                const next = inCompare ? compare.filter(x => x !== id) : (compare.length < 3 ? [...compare, id] : compare);
+                const next = inCompare ? compare.filter(x => x !== id)
+                                       : (compare.length < 3 ? [...compare, id] : compare);
                 setCompare(next);
               };
 
@@ -174,24 +180,22 @@ export default function ProvidersPage(){
             <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
               <h3 className="mb-3 text-sm font-semibold text-gray-900">Filter by Tags</h3>
               <div className="flex flex-wrap gap-2">
-                {useMemo(()=>{ // isolate to avoid reflow noise
-                  const s = new Set(); providers.forEach(p=>p.tags?.forEach(t=>s.add(t)));
-                  return Array.from(s).sort();
-                },[providers]).map(t => {
-                  const active = state.tags.has(t);
-                  return (
-                    <button
-                      key={t}
-                      onClick={()=>dispatch({ type:"TOGGLE_TAG", tag:t })}
-                      className={classNames(
-                        "rounded-full border px-3 py-1 text-xs font-semibold",
-                        active ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-800 hover:bg-gray-50"
-                      )}
-                    >
-                      {t}
-                    </button>
-                  );
-                })}
+                {useMemo(()=>{ const s=new Set(); providers.forEach(p=>p.tags?.forEach(t=>s.add(t))); return Array.from(s).sort(); },[providers])
+                  .map(t => {
+                    const active = state.tags.has(t);
+                    return (
+                      <button
+                        key={t}
+                        onClick={()=>dispatch({ type:"TOGGLE_TAG", tag:t })}
+                        className={classNames(
+                          "rounded-full border px-3 py-1 text-xs font-semibold",
+                          active ? "border-gray-900 bg-gray-900 text-white" : "border-gray-300 bg-white text-gray-800 hover:bg-gray-50"
+                        )}
+                      >
+                        {t}
+                      </button>
+                    );
+                  })}
               </div>
             </div>
           </div>
